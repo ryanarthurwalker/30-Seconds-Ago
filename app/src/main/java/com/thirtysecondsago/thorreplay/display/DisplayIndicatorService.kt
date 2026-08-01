@@ -61,10 +61,15 @@ class DisplayIndicatorService : Service() {
         val view = RedBorderView(displayContext)
         val params = fullScreenOverlayParams("Thor Replay Display Indicator")
 
-        windowManager.addView(view, params)
-        overlayWindowManager = windowManager
-        overlayView = view
-        Log.i(LogTags.SERVICE, "Showing display indicator on display=$displayId")
+        runCatching {
+            windowManager.addView(view, params)
+            overlayWindowManager = windowManager
+            overlayView = view
+            Log.i(LogTags.SERVICE, "Showing display indicator on display=$displayId")
+        }.onFailure { error ->
+            Log.e(LogTags.SERVICE, "Failed to show display indicator", error)
+            stopSelf()
+        }
     }
 
     private fun showSavedPopup(displayId: Int, message: String) {
@@ -78,11 +83,16 @@ class DisplayIndicatorService : Service() {
         val view = SavedPopupView(displayContext, message)
         val params = fullScreenOverlayParams("Thor Replay Saved Popup")
 
-        windowManager.addView(view, params)
-        overlayWindowManager = windowManager
-        overlayView = view
-        mainHandler.postDelayed({ hideAndStop() }, 1_800L)
-        Log.i(LogTags.SERVICE, "Showing save popup on display=$displayId")
+        runCatching {
+            windowManager.addView(view, params)
+            overlayWindowManager = windowManager
+            overlayView = view
+            mainHandler.postDelayed({ hideAndStop() }, 1_800L)
+            Log.i(LogTags.SERVICE, "Showing save popup on display=$displayId")
+        }.onFailure { error ->
+            Log.e(LogTags.SERVICE, "Failed to show saved popup", error)
+            stopSelf()
+        }
     }
 
     private fun displayContextFor(displayId: Int): Context? {

@@ -138,10 +138,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openClip(clip: SavedClip) {
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(clip.uri, "video/mp4")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        startActivity(Intent.createChooser(intent, "Open clip"))
+        runCatching {
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(clip.uri, "video/mp4")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(Intent.createChooser(intent, "Open clip"))
+        }.onFailure {
+            scope.launch {
+                settingsRepository.updateServiceStatus("Unable to open clip: No video player found")
+            }
+        }
     }
 
     private fun chooseOutputFolder() {
@@ -159,14 +165,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getDisplayOptions(): List<DisplayOption> {
-        return getSystemService(DisplayManager::class.java).displays.map { display ->
-            val metrics = android.util.DisplayMetrics()
-            @Suppress("DEPRECATION")
-            display.getRealMetrics(metrics)
-            DisplayOption(
-                displayId = display.displayId,
-                label = "Display ${display.displayId}: ${metrics.widthPixels} x ${metrics.heightPixels}",
-            )
+        val displayManager = getSystemService(DisplayManager::class.java) ?: return emptyList()
+        return displayManager.displays.mapNotNull { display ->
+            runCatching {
+                val metrics = android.util.DisplayMetrics()
+                @Suppress("DEPRECATION")
+                display.getRealMetrics(metrics)
+                val screenName = when (display.displayId) {
+                    0 -> "top screen"
+                    4 -> "bottom screen"
+                    else -> null
+                }
+                val labelPrefix = if (screenName != null) {
+                    "Display ${display.displayId} ($screenName)"
+                } else {
+                    "Display ${display.displayId}"
+                }
+                DisplayOption(
+                    displayId = display.displayId,
+                    label = "$labelPrefix: ${metrics.widthPixels} x ${metrics.heightPixels}",
+                )
+            }.getOrNull()
         }
     }
 

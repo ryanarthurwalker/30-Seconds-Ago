@@ -9,11 +9,14 @@ import android.os.VibratorManager
 object VibrationHelper {
     fun shortConfirm(context: Context) {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            context.getSystemService(VibratorManager::class.java).defaultVibrator
+            context.getSystemService(VibratorManager::class.java)?.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             context.getSystemService(Vibrator::class.java)
-        }
+        } ?: return
+
+        if (!vibrator.hasVibrator()) return
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {

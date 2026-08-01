@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -189,6 +192,15 @@ private fun RowScope.NavItem(
                 overflow = TextOverflow.Ellipsis,
                 softWrap = false,
             )
+            if (selectedTab == tab) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .fillMaxWidth(0.52f)
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
         }
     }
     TextButton(onClick = { onTabSelected(tab) }, modifier = modifier, content = content)
@@ -338,24 +350,30 @@ fun SettingsScreen(
     SectionCard {
         SectionHeader("Video Quality")
         Text("${settings.width} x ${settings.height} at ${settings.frameRate} FPS")
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val columns = if (maxWidth < 420.dp) 1 else 2
-            CapturePreset.entries.chunked(columns).forEach { rowPresets ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    rowPresets.forEach { preset ->
-                        FilterChip(
-                            selected = settings.width == preset.width &&
-                                settings.height == preset.height &&
-                                settings.frameRate == preset.frameRate &&
-                                settings.bitrateMbps == preset.bitrateMbps,
-                            onClick = { scope.launch { settingsRepository.applyPreset(preset) } },
-                            label = { Text(preset.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    repeat(columns - rowPresets.size) {
-                        Row(modifier = Modifier.weight(1f)) {}
-                    }
+        var qualityMenuOpen by remember { mutableStateOf(false) }
+        val selectedPreset = CapturePreset.entries.firstOrNull { preset ->
+            settings.width == preset.width &&
+                settings.height == preset.height &&
+                settings.frameRate == preset.frameRate &&
+                settings.bitrateMbps == preset.bitrateMbps
+        }
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { qualityMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                ButtonText(selectedPreset?.label ?: "Custom quality")
+            }
+            DropdownMenu(
+                expanded = qualityMenuOpen,
+                onDismissRequest = { qualityMenuOpen = false },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                CapturePreset.entries.forEach { preset ->
+                    DropdownMenuItem(
+                        text = { Text(preset.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        onClick = {
+                            qualityMenuOpen = false
+                            scope.launch { settingsRepository.applyPreset(preset) }
+                        },
+                    )
                 }
             }
         }
