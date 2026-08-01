@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">30 Seconds Ago</string>
+    <string name="accessibility_service_label">30 Seconds Ago Capture Key</string>
+    <string name="accessibility_service_description">Listens for your selected hardware key and saves the current replay buffer.</string>
+</resources>
