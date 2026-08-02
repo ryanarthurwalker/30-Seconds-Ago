@@ -32,18 +32,6 @@ The debug APK is created at:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Build A Signed Release APK
-
-Use Android Studio:
-
-1. Open this project.
-2. Choose `Build` -> `Generate Signed App Bundle / APK`.
-3. Choose `APK`.
-4. Select or create a private keystore outside this repo.
-5. Choose the `release` build variant.
-6. Finish the wizard.
-
-Do not commit keystore files or passwords. Share signed APKs through GitHub Releases instead of committing them to the repository.
 
 ## Filename Templates
 
