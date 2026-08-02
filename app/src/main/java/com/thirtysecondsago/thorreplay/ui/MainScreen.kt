@@ -432,25 +432,23 @@ fun SettingsScreen(
                 }
             }
         }
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val columns = if (maxWidth < 420.dp) 1 else 2
-            displays.chunked(columns).forEach { rowDisplays ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    rowDisplays.forEach { display ->
-                        FilterChip(
-                            selected = settings.savedPopupDisplayId == display.displayId,
-                            onClick = {
-                                onSelectSavedPopupDisplay(display)
-                                onSelectDisplay(display)
-                            },
-                            label = { Text(display.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            modifier = Modifier.weight(1f),
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            displays.forEach { display ->
+                FilterChip(
+                    selected = settings.savedPopupDisplayId == display.displayId,
+                    onClick = {
+                        onSelectSavedPopupDisplay(display)
+                        onSelectDisplay(display)
+                    },
+                    label = {
+                        Text(
+                            display.alertPickerLabel(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    repeat(columns - rowDisplays.size) {
-                        Row(modifier = Modifier.weight(1f)) {}
-                    }
-                }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -462,6 +460,12 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+private fun DisplayOption.alertPickerLabel(): String = when (displayId) {
+    0 -> "Top screen"
+    4 -> "Bottom screen"
+    else -> "Display $displayId"
 }
 
 @Composable
