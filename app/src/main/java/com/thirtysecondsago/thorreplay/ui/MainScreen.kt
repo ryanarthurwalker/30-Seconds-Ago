@@ -130,10 +130,6 @@ fun ThorReplayApp(
                             onStartBuffer = onStartBuffer,
                             onStopBuffer = onStopBuffer,
                             onSaveReplay = onSaveReplay,
-                            onLoadSavedClips = onLoadSavedClips,
-                            onOpenClip = onOpenClip,
-                            onShareClip = onShareClip,
-                            onOpenClips = { tab = AppTab.Clips },
                         )
                         AppTab.Clips -> ClipsScreen(settingsRepository, onLoadSavedClips, onOpenClip, onShareClip)
                         AppTab.Settings -> SettingsScreen(
@@ -363,86 +359,40 @@ private fun ReplayScreen(
     onStartBuffer: () -> Unit,
     onStopBuffer: () -> Unit,
     onSaveReplay: () -> Unit,
-    onLoadSavedClips: (String) -> List<SavedClip>,
-    onOpenClip: (SavedClip) -> Unit,
-    onShareClip: (SavedClip) -> Unit,
-    onOpenClips: () -> Unit,
 ) {
     val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
-    var clips by remember { mutableStateOf(emptyList<SavedClip>()) }
-    LaunchedEffect(settings.outputFolderUri, settings.lastSavedUri) {
-        clips = onLoadSavedClips(settings.outputFolderUri)
-    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val compact = maxHeight < 420.dp
-        val recentLimit = if (compact) 2 else 4
-        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)) {
-            SectionCard {
-                if (!compact) {
-                    Text("Replay Assistant", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                }
+        Column(modifier = Modifier.fillMaxSize()) {
+            SectionCard(
+                modifier = Modifier.fillMaxSize(),
+                contentModifier = Modifier.fillMaxSize(),
+            ) {
                 Button(
                     onClick = onSaveReplay,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (compact) 58.dp else 68.dp),
+                        .weight(1f),
                 ) {
                     Icon(Icons.Default.Save, contentDescription = null)
                     ButtonText("Capture Replay")
                 }
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val stackControls = maxWidth < 360.dp
+                    val stackControls = maxWidth < 560.dp
                     if (stackControls) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                            ReplayControlButton("Start", Icons.Default.PlayArrow, onStartBuffer, compact, Modifier.fillMaxWidth())
-                            ReplayControlButton("Stop", Icons.Default.Stop, onStopBuffer, compact, Modifier.fillMaxWidth())
+                            ReplayControlButton("Start Replay Buffer", Icons.Default.PlayArrow, onStartBuffer, compact, Modifier.fillMaxWidth())
+                            ReplayControlButton("Stop Replay Buffer", Icons.Default.Stop, onStopBuffer, compact, Modifier.fillMaxWidth())
                         }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            ReplayControlButton("Start", Icons.Default.PlayArrow, onStartBuffer, compact, Modifier.weight(1f))
-                            ReplayControlButton("Stop", Icons.Default.Stop, onStopBuffer, compact, Modifier.weight(1f))
+                            ReplayControlButton("Start Replay Buffer", Icons.Default.PlayArrow, onStartBuffer, compact, Modifier.weight(1f))
+                            ReplayControlButton("Stop Replay Buffer", Icons.Default.Stop, onStopBuffer, compact, Modifier.weight(1f))
                         }
                     }
-                }
-                if (!compact) {
-                    Text(
-                        "${settings.replayDurationSeconds}s - ${settings.width} x ${settings.height} - ${settings.frameRate} FPS",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
                 }
                 Text(settings.serviceStatus, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                OutlinedButton(onClick = onOpenClips, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Movie, contentDescription = null)
-                    ButtonText("Clips")
-                }
-            }
-            SectionCard {
-                Text("Recent Clips", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                if (clips.isEmpty()) {
-                    Text("No clips yet.", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    clips.take(recentLimit).forEach { clip ->
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                            Text(clip.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(onClick = { onOpenClip(clip) }, modifier = Modifier.weight(1f)) {
-                                    Icon(Icons.Default.Movie, contentDescription = null)
-                                    ButtonText("Open")
-                                }
-                                OutlinedButton(onClick = { onShareClip(clip) }, modifier = Modifier.weight(1f)) {
-                                    Icon(Icons.Default.Share, contentDescription = null)
-                                    ButtonText("Share")
-                                }
-                            }
-                        }
-                    }
-                    if (!compact) {
-                        OutlinedButton(onClick = onOpenClips, modifier = Modifier.fillMaxWidth()) {
-                            ButtonText("Open All Clips")
-                        }
-                    }
-                }
             }
         }
     }
@@ -888,15 +838,19 @@ private fun friendlyKeyName(rawName: String): String {
 }
 
 @Composable
-private fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
+private fun SectionCard(
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    contentModifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 420.dp
             Column(
-                modifier = Modifier.padding(if (compact) 10.dp else 14.dp),
+                modifier = contentModifier.padding(if (compact) 10.dp else 14.dp),
                 verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
                 content = content,
             )
