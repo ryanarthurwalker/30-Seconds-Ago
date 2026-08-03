@@ -30,6 +30,7 @@ data class AppSettings(
     val selectedDisplayLabel: String = "Default display",
     val savedPopupDisplayId: Int = 0,
     val savedPopupDisplayLabel: String = "Default display",
+    val onboardingComplete: Boolean = false,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -51,6 +52,7 @@ class SettingsRepository(private val context: Context) {
             selectedDisplayLabel = prefs[Keys.selectedDisplayLabel] ?: "Default display",
             savedPopupDisplayId = prefs[Keys.savedPopupDisplayId] ?: (prefs[Keys.selectedDisplayId] ?: 0),
             savedPopupDisplayLabel = prefs[Keys.savedPopupDisplayLabel] ?: (prefs[Keys.selectedDisplayLabel] ?: "Default display"),
+            onboardingComplete = prefs[Keys.onboardingComplete] ?: false,
         )
     }
 
@@ -135,6 +137,10 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateOnboardingComplete(complete: Boolean) {
+        context.settingsDataStore.edit { it[Keys.onboardingComplete] = complete }
+    }
+
     private object Keys {
         val replayDurationSeconds = intPreferencesKey("replay_duration_seconds")
         val width = intPreferencesKey("capture_width")
@@ -152,5 +158,6 @@ class SettingsRepository(private val context: Context) {
         val selectedDisplayLabel = stringPreferencesKey("selected_display_label")
         val savedPopupDisplayId = intPreferencesKey("saved_popup_display_id")
         val savedPopupDisplayLabel = stringPreferencesKey("saved_popup_display_label")
+        val onboardingComplete = booleanPreferencesKey("onboarding_complete")
     }
 }

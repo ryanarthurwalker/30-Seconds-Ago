@@ -2,6 +2,7 @@ package com.thirtysecondsago.thorreplay
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.hardware.display.DisplayManager
 import android.media.projection.MediaProjectionManager
@@ -89,6 +90,7 @@ class MainActivity : ComponentActivity() {
                 onOpenOverlaySettings = ::openOverlaySettings,
                 onLoadSavedClips = ::loadSavedClips,
                 onOpenClip = ::openClip,
+                onShareClip = ::shareClip,
                 onOpenAccessibilitySettings = ::openAccessibilitySettings,
                 onKeyDetectionActive = { active, callback ->
                     keyDetectionEnabled = active
@@ -142,10 +144,29 @@ class MainActivity : ComponentActivity() {
             val intent = Intent(Intent.ACTION_VIEW)
                 .setDataAndType(clip.uri, "video/mp4")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.clipData = ClipData.newUri(contentResolver, clip.name, clip.uri)
             startActivity(Intent.createChooser(intent, "Open clip"))
         }.onFailure {
             scope.launch {
                 settingsRepository.updateServiceStatus("Unable to open clip: No video player found")
+            }
+        }
+    }
+
+    private fun shareClip(clip: SavedClip) {
+        runCatching {
+            val shareIntent = Intent(Intent.ACTION_SEND)
+                .setType("video/mp4")
+                .putExtra(Intent.EXTRA_STREAM, clip.uri)
+                .putExtra(Intent.EXTRA_TITLE, clip.name)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            shareIntent.clipData = ClipData.newUri(contentResolver, clip.name, clip.uri)
+            val chooser = Intent.createChooser(shareIntent, "Share clip")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(chooser)
+        }.onFailure {
+            scope.launch {
+                settingsRepository.updateServiceStatus("Unable to share clip")
             }
         }
     }
