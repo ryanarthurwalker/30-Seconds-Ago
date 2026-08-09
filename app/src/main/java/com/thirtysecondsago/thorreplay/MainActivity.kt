@@ -9,7 +9,9 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +40,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var keyBindingRepository: KeyBindingRepository
     private var keyDetectionEnabled = false
     private var onDetectedKey: ((KeyCaptureEvent) -> Unit)? = null
+    private var controllerInputGuardUntilMs = 0L
+    private val guardedControllerKeys = mutableSetOf<Int>()
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -100,7 +104,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        controllerInputGuardUntilMs = SystemClock.uptimeMillis() + CONTROLLER_INPUT_GUARD_MS
+        guardedControllerKeys.clear()
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (shouldGuardControllerActivation(event)) {
+            return true
+        }
         if (keyDetectionEnabled && event.action == KeyEvent.ACTION_UP) {
             val callback = onDetectedKey
             if (callback != null) {
@@ -111,6 +124,33 @@ class MainActivity : ComponentActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun shouldGuardControllerActivation(event: KeyEvent): Boolean {
+        val isController = event.isFromSource(InputDevice.SOURCE_GAMEPAD) ||
+            event.isFromSource(InputDevice.SOURCE_DPAD) ||
+            event.isFromSource(InputDevice.SOURCE_JOYSTICK)
+        val isActivationKey = event.keyCode == KeyEvent.KEYCODE_BUTTON_A ||
+            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+            event.keyCode == KeyEvent.KEYCODE_ENTER ||
+            event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+        if (!isController || !isActivationKey) return false
+
+        if (SystemClock.uptimeMillis() < controllerInputGuardUntilMs) {
+            guardedControllerKeys += event.keyCode
+            if (event.action == KeyEvent.ACTION_UP) {
+                guardedControllerKeys -= event.keyCode
+            }
+            return true
+        }
+
+        if (event.keyCode in guardedControllerKeys) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                guardedControllerKeys -= event.keyCode
+            }
+            return true
+        }
+        return false
     }
 
     override fun onDestroy() {
@@ -145,7 +185,7 @@ class MainActivity : ComponentActivity() {
                 .setDataAndType(clip.uri, "video/mp4")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             intent.clipData = ClipData.newUri(contentResolver, clip.name, clip.uri)
-            startActivity(Intent.createChooser(intent, "Open clip"))
+            startActivity(Intent.createChooser(intent, "Open clip in another app"))
         }.onFailure {
             scope.launch {
                 settingsRepository.updateServiceStatus("Unable to open clip: No video player found")
@@ -255,5 +295,9 @@ class MainActivity : ComponentActivity() {
 
     private fun maybeRequestAudioPermission() {
         audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private companion object {
+        const val CONTROLLER_INPUT_GUARD_MS = 750L
     }
 }

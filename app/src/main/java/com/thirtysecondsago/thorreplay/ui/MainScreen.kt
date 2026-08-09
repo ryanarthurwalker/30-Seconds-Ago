@@ -446,17 +446,23 @@ private fun ClipsScreen(
 
 @Composable
 private fun ClipPlayer(uri: Uri) {
+    val context = LocalContext.current
+    val videoView = remember(uri) {
+        VideoView(context).apply {
+            setMediaController(MediaController(context).also { it.setAnchorView(this) })
+        }
+    }
+    DisposableEffect(videoView) {
+        onDispose {
+            videoView.stopPlayback()
+        }
+    }
     AndroidView(
-        factory = { context ->
-            VideoView(context).apply {
-                setMediaController(MediaController(context).also { it.setAnchorView(this) })
-            }
-        },
+        factory = { videoView },
         update = { view ->
             if (view.tag != uri) {
                 view.tag = uri
                 view.setVideoURI(uri)
-                view.requestFocus()
                 view.start()
             }
         },
@@ -503,12 +509,12 @@ private fun ClipCard(
             } else {
                 OutlinedButton(onClick = onPlay, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    ButtonText("Play")
+                    ButtonText("Play here")
                 }
             }
             OutlinedButton(onClick = onOpen, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Default.Movie, contentDescription = null)
-                ButtonText("Open")
+                ButtonText("Open externally")
             }
             OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) {
                 Icon(Icons.Default.Share, contentDescription = null)
@@ -780,11 +786,18 @@ fun KeyDetectionScreen(
 
 @Composable
 fun InfoScreen(onShowOnboarding: () -> Unit) {
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "Unknown"
+    }
     ScreenTitle("Info")
     SectionCard {
         SectionHeader("About")
         Text("30 Seconds Ago keeps a short gameplay buffer in memory and saves the recent replay as an MP4 clip.")
         Text("Built for the AYN Thor dual-screen setup, with the dashboard intended for the bottom screen.")
+        Text("Version $versionName")
         SectionHeader("Notes")
         Text("Some games may block internal audio recording.")
         Text("If a button does not work as the replay trigger, try choosing a different controller button.")
