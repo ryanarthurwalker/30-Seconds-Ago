@@ -24,8 +24,10 @@ import com.thirtysecondsago.thorreplay.input.KeyBindingRepository
 import com.thirtysecondsago.thorreplay.input.KeyCaptureEvent
 import com.thirtysecondsago.thorreplay.input.toCaptureEvent
 import com.thirtysecondsago.thorreplay.settings.SettingsRepository
+import com.thirtysecondsago.thorreplay.settings.CaptureState
 import com.thirtysecondsago.thorreplay.storage.ReplayStorage
 import com.thirtysecondsago.thorreplay.storage.SavedClip
+import com.thirtysecondsago.thorreplay.storage.TrimClipResult
 import com.thirtysecondsago.thorreplay.ui.ThorReplayApp
 import com.thirtysecondsago.thorreplay.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
@@ -59,7 +61,10 @@ class MainActivity : ComponentActivity() {
                 )
             } else {
                 scope.launch {
-                    SettingsRepository(applicationContext).updateServiceStatus("Screen capture permission denied")
+                    SettingsRepository(applicationContext).updateCaptureState(
+                        CaptureState.Error,
+                        "Screen capture permission denied",
+                    )
                 }
             }
         }
@@ -95,6 +100,9 @@ class MainActivity : ComponentActivity() {
                 onLoadSavedClips = ::loadSavedClips,
                 onOpenClip = ::openClip,
                 onShareClip = ::shareClip,
+                onRenameClip = ::renameClip,
+                onDeleteClip = ::deleteClip,
+                onTrimClip = ::trimClip,
                 onOpenAccessibilitySettings = ::openAccessibilitySettings,
                 onKeyDetectionActive = { active, callback ->
                     keyDetectionEnabled = active
@@ -209,6 +217,31 @@ class MainActivity : ComponentActivity() {
                 settingsRepository.updateServiceStatus("Unable to share clip")
             }
         }
+    }
+
+    private fun renameClip(clip: SavedClip, newName: String): SavedClip {
+        return ReplayStorage.renameClip(applicationContext, clip, newName)
+    }
+
+    private fun deleteClip(clip: SavedClip) {
+        ReplayStorage.deleteClip(applicationContext, clip)
+    }
+
+    private fun trimClip(
+        clip: SavedClip,
+        startMs: Long,
+        endMs: Long,
+        replaceOriginal: Boolean,
+        outputFolderUri: String,
+    ): TrimClipResult {
+        return ReplayStorage.trimClip(
+            applicationContext,
+            clip,
+            startMs,
+            endMs,
+            replaceOriginal,
+            outputFolderUri,
+        )
     }
 
     private fun chooseOutputFolder() {

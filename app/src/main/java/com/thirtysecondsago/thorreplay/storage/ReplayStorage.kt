@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.media.MediaMetadataRetriever
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
 import java.time.LocalDateTime
@@ -120,9 +121,11 @@ object ReplayStorage {
 
     fun listSavedClips(context: Context, outputFolderUri: String): List<SavedClip> {
         val clips = mutableListOf<SavedClip>()
-        clips += listMediaStoreClips(context)
+        clips += runCatching { listMediaStoreClips(context) }.getOrDefault(emptyList())
         if (outputFolderUri.isNotBlank()) {
-            clips += listDocumentClips(context, Uri.parse(outputFolderUri))
+            clips += runCatching {
+                listDocumentClips(context, Uri.parse(outputFolderUri))
+            }.getOrDefault(emptyList())
         }
         return clips.distinctBy { it.uri }.sortedByDescending { it.modifiedMs }
     }
@@ -134,6 +137,9 @@ object ReplayStorage {
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
         )
         val selection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             "${MediaStore.Video.Media.RELATIVE_PATH}=?"
@@ -156,6 +162,9 @@ object ReplayStorage {
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             buildList {
                 while (cursor.moveToNext()) {
                     val name = cursor.getString(nameColumn)
@@ -168,6 +177,9 @@ object ReplayStorage {
                             sizeBytes = cursor.getLong(sizeColumn),
                             modifiedMs = cursor.getLong(modifiedColumn) * 1_000L,
                             source = "Movies/ThorReplay",
+                            durationMs = cursor.getLong(durationColumn),
+                            width = cursor.getInt(widthColumn),
+                            height = cursor.getInt(heightColumn),
                         )
                     )
                 }
@@ -180,16 +192,134 @@ object ReplayStorage {
         return folder.listFiles()
             .filter { it.isFile && it.name?.endsWith(".mp4", ignoreCase = true) == true }
             .map {
+                val metadata = readVideoMetadata(context, it.uri)
                 SavedClip(
                     name = it.name ?: "Unnamed clip",
                     uri = it.uri,
                     sizeBytes = it.length(),
                     modifiedMs = it.lastModified(),
                     source = "Selected folder",
+                    durationMs = metadata.durationMs,
+                    width = metadata.width,
+                    height = metadata.height,
                 )
             }
     }
+
+    fun renameClip(context: Context, clip: SavedClip, requestedName: String): SavedClip {
+        val newName = normalizedClipName(requestedName)
+        require(newName.isNotBlank()) { "Clip name cannot be empty" }
+        if (newName == clip.name) return clip
+
+        if (clip.source == "Selected folder") {
+            val document = DocumentFile.fromSingleUri(context, clip.uri)
+                ?: error("Clip is no longer available")
+            check(document.renameTo(newName)) { "Unable to rename clip" }
+        } else {
+            val updated = context.contentResolver.update(
+                clip.uri,
+                ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, newName)
+                    put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1_000L)
+                },
+                null,
+                null,
+            )
+            check(updated > 0) { "Clip is no longer available" }
+        }
+        return clip.copy(name = newName, modifiedMs = System.currentTimeMillis())
+    }
+
+    fun deleteClip(context: Context, clip: SavedClip) {
+        val deleted = if (clip.source == "Selected folder") {
+            DocumentFile.fromSingleUri(context, clip.uri)?.delete() == true
+        } else {
+            context.contentResolver.delete(clip.uri, null, null) > 0
+        }
+        check(deleted) { "Clip is no longer available or could not be deleted" }
+    }
+
+    fun trimClip(
+        context: Context,
+        clip: SavedClip,
+        startMs: Long,
+        endMs: Long,
+        replaceOriginal: Boolean,
+        outputFolderUri: String,
+    ): TrimClipResult {
+        val baseName = clip.name.removeSuffix(".mp4")
+        val trimmedName = normalizedClipName("${baseName}_trimmed")
+        val tempDirectory = File(context.cacheDir, "recordings").apply { mkdirs() }
+        val tempFile = File.createTempFile("trim_", ".mp4", tempDirectory)
+        return try {
+            val actualRange = ClipTrimmer.writeTrimmedMp4(
+                context = context,
+                sourceUri = clip.uri,
+                outputFile = tempFile,
+                requestedStartMs = startMs,
+                requestedEndMs = endMs,
+            )
+            val trimmedSize = tempFile.length()
+            val saved = saveCompletedVideo(context, tempFile, trimmedName, outputFolderUri)
+            var savedClip = clip.copy(
+                name = saved.filename,
+                uri = saved.uri,
+                sizeBytes = trimmedSize,
+                modifiedMs = System.currentTimeMillis(),
+                source = if (outputFolderUri.isBlank()) "Movies/ThorReplay" else "Selected folder",
+                durationMs = (actualRange.endMs - actualRange.startMs).coerceAtLeast(0L),
+            )
+            if (!replaceOriginal) {
+                return TrimClipResult(savedClip, replacedOriginal = false, "Saved ${savedClip.name}")
+            }
+
+            val deletedOriginal = runCatching { deleteClip(context, clip) }.isSuccess
+            if (!deletedOriginal) {
+                return TrimClipResult(
+                    savedClip,
+                    replacedOriginal = false,
+                    message = "Trimmed copy saved, but the original could not be deleted",
+                )
+            }
+            savedClip = runCatching { renameClip(context, savedClip, clip.name) }.getOrDefault(savedClip)
+            TrimClipResult(savedClip, replacedOriginal = true, "Replaced ${clip.name}")
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    fun normalizedClipName(requestedName: String): String {
+        val trimmedName = requestedName.trim()
+        val nameWithoutExtension = if (trimmedName.endsWith(".mp4", ignoreCase = true)) {
+            trimmedName.dropLast(4)
+        } else {
+            trimmedName
+        }
+        val safeName = nameWithoutExtension
+            .replace(Regex("""[\\/:*?"<>|]"""), "_")
+            .trim()
+        return if (safeName.isBlank()) "" else "$safeName.mp4"
+    }
+
+    private fun readVideoMetadata(context: Context, uri: Uri): VideoMetadata {
+        return runCatching {
+            MediaMetadataRetriever().use { retriever ->
+                retriever.setDataSource(context, uri)
+                VideoMetadata(
+                    durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L,
+                    width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0,
+                    height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0,
+                )
+            }
+        }.getOrDefault(VideoMetadata())
+    }
 }
+
+private data class VideoMetadata(
+    val durationMs: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0,
+)
 
 data class SavedVideo(
     val filename: String,
@@ -202,4 +332,13 @@ data class SavedClip(
     val sizeBytes: Long,
     val modifiedMs: Long,
     val source: String,
+    val durationMs: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0,
+)
+
+data class TrimClipResult(
+    val clip: SavedClip,
+    val replacedOriginal: Boolean,
+    val message: String,
 )

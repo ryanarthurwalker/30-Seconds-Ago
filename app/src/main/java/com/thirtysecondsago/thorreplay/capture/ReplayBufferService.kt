@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import com.thirtysecondsago.thorreplay.display.DisplayIndicatorService
 import com.thirtysecondsago.thorreplay.settings.AppSettings
+import com.thirtysecondsago.thorreplay.settings.CaptureState
 import com.thirtysecondsago.thorreplay.settings.SettingsRepository
 import com.thirtysecondsago.thorreplay.storage.ReplayStorage
 import com.thirtysecondsago.thorreplay.util.LogTags
@@ -24,6 +25,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.time.LocalDateTime
 
 class ReplayBufferService : Service() {
@@ -44,7 +46,9 @@ class ReplayBufferService : Service() {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 if (intent == null) {
-                    scope.launch { settingsRepository.updateServiceStatus("Missing screen capture permission") }
+                    scope.launch {
+                        settingsRepository.updateCaptureState(CaptureState.Error, "Missing screen capture permission")
+                    }
                     stopSelf()
                 } else {
                     startReplayBuffer(intent)
@@ -59,9 +63,17 @@ class ReplayBufferService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        val stoppedUnexpectedly = active
         active = false
         stopRecorder(projectionAlreadyStopped = false)
-        scope.launch { settingsRepository.updateServiceStatus("Stopped") }
+        if (stoppedUnexpectedly) {
+            runBlocking(Dispatchers.IO) {
+                settingsRepository.updateCaptureState(
+                    CaptureState.Error,
+                    "Recorder service stopped unexpectedly",
+                )
+            }
+        }
         scope.cancel()
         Log.i(LogTags.SERVICE, "ReplayBufferService destroyed")
         super.onDestroy()
@@ -81,7 +93,9 @@ class ReplayBufferService : Service() {
             intent.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (resultCode == 0 || resultData == null) {
-            scope.launch { settingsRepository.updateServiceStatus("Missing screen capture permission") }
+            scope.launch {
+                settingsRepository.updateCaptureState(CaptureState.Error, "Missing screen capture permission")
+            }
             Log.e(LogTags.SERVICE, "Start requested without MediaProjection result")
             stopSelf()
             return
@@ -101,7 +115,7 @@ class ReplayBufferService : Service() {
 
         scope.launch {
             runCatching {
-                settingsRepository.updateServiceStatus("Starting replay buffer")
+                settingsRepository.updateCaptureState(CaptureState.Starting, "Preparing encoder and replay buffer")
                 val settings = settingsRepository.settings.first()
                 val manager = getSystemService(MediaProjectionManager::class.java)
                 val mediaProjection = manager.getMediaProjection(resultCode, resultData)
@@ -111,9 +125,15 @@ class ReplayBufferService : Service() {
                     configuration = settings.toCaptureConfiguration(),
                     onProjectionStopped = {
                         scope.launch(Dispatchers.IO) {
+                            val stoppedUnexpectedly = active
                             active = false
                             stopRecorder(projectionAlreadyStopped = true)
-                            settingsRepository.updateServiceStatus("Screen capture stopped")
+                            if (stoppedUnexpectedly) {
+                                settingsRepository.updateCaptureState(
+                                    CaptureState.Error,
+                                    "Screen capture permission ended unexpectedly",
+                                )
+                            }
                             ServiceCompat.stopForeground(this@ReplayBufferService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                             stopSelf()
                         }
@@ -122,13 +142,17 @@ class ReplayBufferService : Service() {
                 projection = mediaProjection
                 recorder = bufferedRecorder
                 bufferedRecorder.start()
-                settingsRepository.updateServiceStatus(
+                settingsRepository.updateCaptureState(
+                    CaptureState.Ready,
                     "Buffering last ${bufferedRecorder.replayDurationSeconds}s at ${bufferedRecorder.width} x ${bufferedRecorder.height}"
                 )
             }.onFailure { error ->
                 Log.e(LogTags.SERVICE, "Unable to start replay buffer", error)
                 active = false
-                settingsRepository.updateServiceStatus("Replay buffer failed: ${error.message ?: error.javaClass.simpleName}")
+                settingsRepository.updateCaptureState(
+                    CaptureState.Error,
+                    "Replay buffer failed: ${error.message ?: error.javaClass.simpleName}",
+                )
                 ServiceCompat.stopForeground(this@ReplayBufferService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -140,7 +164,7 @@ class ReplayBufferService : Service() {
         active = false
         scope.launch(Dispatchers.IO) {
             stopRecorder(projectionAlreadyStopped = false)
-            settingsRepository.updateServiceStatus("Stopped")
+            settingsRepository.updateCaptureState(CaptureState.Off, "Replay buffer stopped")
             ServiceCompat.stopForeground(this@ReplayBufferService, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -155,7 +179,7 @@ class ReplayBufferService : Service() {
                 0,
             )
             val reason = "Replay buffer is not active"
-            scope.launch { settingsRepository.updateServiceStatus(reason) }
+            scope.launch { settingsRepository.updateCaptureState(CaptureState.Error, reason) }
             NotificationHelper.notifySaveResult(this, "Replay not saved", reason)
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -182,19 +206,20 @@ class ReplayBufferService : Service() {
         val activeRecorder = recorder
         if (activeRecorder == null) {
             val reason = "Replay buffer is not active"
-            settingsRepository.updateServiceStatus(reason)
+            settingsRepository.updateCaptureState(CaptureState.Error, reason)
             NotificationHelper.notifySaveResult(this, "Replay not saved", reason)
             return
         }
 
         val settings = settingsRepository.settings.first()
+        settingsRepository.updateCaptureState(CaptureState.Saving, "Saving the most recent replay")
         delay(350L)
         val snapshot = activeRecorder.snapshot()
         val audioSnapshot = activeRecorder.audioSnapshot()
         val outputFormat = snapshot.outputFormat
         if (outputFormat == null) {
             val reason = "Encoder format is not ready yet"
-            settingsRepository.updateServiceStatus(reason)
+            settingsRepository.updateCaptureState(CaptureState.Error, reason, bufferActive = true)
             NotificationHelper.notifySaveResult(this, "Replay not saved", reason)
             return
         }
@@ -206,7 +231,7 @@ class ReplayBufferService : Service() {
         )
         if (selectedSamples.videoSamples.isEmpty()) {
             val reason = "No keyframe available in buffer yet"
-            settingsRepository.updateServiceStatus(reason)
+            settingsRepository.updateCaptureState(CaptureState.Error, reason, bufferActive = true)
             NotificationHelper.notifySaveResult(this, "Replay not saved", reason)
             return
         }
@@ -236,7 +261,8 @@ class ReplayBufferService : Service() {
             )
             tempFile.delete()
             settingsRepository.updateLastSavedClip(filename, savedVideo.uri.toString())
-            settingsRepository.updateServiceStatus(
+            settingsRepository.updateCaptureState(
+                CaptureState.Ready,
                 "Saved ${selectedSamples.videoSamples.durationSeconds()}s replay; audio samples ${selectedSamples.audioSamples.size}"
             )
             VibrationHelper.shortConfirm(this)
@@ -250,7 +276,7 @@ class ReplayBufferService : Service() {
             tempFile.delete()
             val reason = "Replay save failed: ${error.message ?: error.javaClass.simpleName}"
             Log.e(LogTags.STORAGE, reason, error)
-            settingsRepository.updateServiceStatus(reason)
+            settingsRepository.updateCaptureState(CaptureState.Error, reason, bufferActive = true)
             settingsRepository.updateLastSavedClip("Replay failed", "")
             NotificationHelper.notifySaveResult(this, "Replay failed", reason)
         }

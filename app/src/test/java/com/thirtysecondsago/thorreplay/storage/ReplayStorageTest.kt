@@ -11,4 +11,14 @@ class ReplayStorageTest {
 
         assertEquals("ThorReplay_2026-07-31_15-42-10.mp4", filename)
     }
+
+    @Test
+    fun normalizesRenamedClipFilename() {
+        assertEquals("Boss fight_ 1.mp4", ReplayStorage.normalizedClipName(" Boss fight: 1.mp4 "))
+    }
+
+    @Test
+    fun rejectsBlankRenamedClipFilename() {
+        assertEquals("", ReplayStorage.normalizedClipName("   "))
+    }
 }

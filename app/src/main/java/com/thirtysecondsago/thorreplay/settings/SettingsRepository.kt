@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.thirtysecondsago.thorreplay.capture.CaptureConfiguration
 import com.thirtysecondsago.thorreplay.capture.CapturePreset
@@ -13,6 +14,14 @@ import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore by preferencesDataStore("thor_replay_settings")
 
+enum class CaptureState(val label: String) {
+    Off("Off"),
+    Starting("Starting"),
+    Ready("Ready"),
+    Saving("Saving"),
+    Error("Error"),
+}
+
 data class AppSettings(
     val replayDurationSeconds: Int = 30,
     val width: Int = 1280,
@@ -20,9 +29,12 @@ data class AppSettings(
     val frameRate: Int = 30,
     val bitrateMbps: Int = 6,
     val audioEnabled: Boolean = false,
+    val captureState: CaptureState = CaptureState.Off,
+    val bufferActive: Boolean = false,
     val serviceStatus: String = "Stopped",
     val lastSavedClip: String = "No clip saved yet",
     val lastSavedUri: String = "",
+    val favoriteClipUris: Set<String> = emptySet(),
     val outputFolderUri: String = "",
     val outputFolderLabel: String = "Movies/ThorReplay",
     val filenameTemplate: String = "ThorReplay_{datetime}",
@@ -42,9 +54,14 @@ class SettingsRepository(private val context: Context) {
             frameRate = prefs[Keys.frameRate] ?: 30,
             bitrateMbps = prefs[Keys.bitrateMbps] ?: 6,
             audioEnabled = prefs[Keys.audioEnabled] ?: false,
+            captureState = prefs[Keys.captureState]
+                ?.let { saved -> CaptureState.entries.firstOrNull { it.name == saved } }
+                ?: CaptureState.Off,
+            bufferActive = prefs[Keys.bufferActive] ?: false,
             serviceStatus = prefs[Keys.serviceStatus] ?: "Stopped",
             lastSavedClip = prefs[Keys.lastSavedClip] ?: "No clip saved yet",
             lastSavedUri = prefs[Keys.lastSavedUri] ?: "",
+            favoriteClipUris = prefs[Keys.favoriteClipUris] ?: emptySet(),
             outputFolderUri = prefs[Keys.outputFolderUri] ?: "",
             outputFolderLabel = prefs[Keys.outputFolderLabel] ?: "Movies/ThorReplay",
             filenameTemplate = prefs[Keys.filenameTemplate] ?: "ThorReplay_{datetime}",
@@ -103,10 +120,31 @@ class SettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { it[Keys.serviceStatus] = status }
     }
 
+    suspend fun updateCaptureState(
+        state: CaptureState,
+        detail: String,
+        bufferActive: Boolean = state == CaptureState.Starting ||
+            state == CaptureState.Ready || state == CaptureState.Saving,
+    ) {
+        context.settingsDataStore.edit {
+            it[Keys.captureState] = state.name
+            it[Keys.bufferActive] = bufferActive
+            it[Keys.serviceStatus] = detail
+        }
+    }
+
     suspend fun updateLastSavedClip(name: String, uri: String) {
         context.settingsDataStore.edit {
             it[Keys.lastSavedClip] = name
             it[Keys.lastSavedUri] = uri
+        }
+    }
+
+    suspend fun updateFavoriteClip(uri: String, favorite: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            val favorites = (prefs[Keys.favoriteClipUris] ?: emptySet()).toMutableSet()
+            if (favorite) favorites += uri else favorites -= uri
+            prefs[Keys.favoriteClipUris] = favorites
         }
     }
 
@@ -148,9 +186,12 @@ class SettingsRepository(private val context: Context) {
         val frameRate = intPreferencesKey("capture_frame_rate")
         val bitrateMbps = intPreferencesKey("capture_bitrate_mbps")
         val audioEnabled = booleanPreferencesKey("audio_enabled")
+        val captureState = stringPreferencesKey("capture_state")
+        val bufferActive = booleanPreferencesKey("buffer_active")
         val serviceStatus = stringPreferencesKey("service_status")
         val lastSavedClip = stringPreferencesKey("last_saved_clip")
         val lastSavedUri = stringPreferencesKey("last_saved_uri")
+        val favoriteClipUris = stringSetPreferencesKey("favorite_clip_uris")
         val outputFolderUri = stringPreferencesKey("output_folder_uri")
         val outputFolderLabel = stringPreferencesKey("output_folder_label")
         val filenameTemplate = stringPreferencesKey("filename_template")
