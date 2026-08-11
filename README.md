@@ -4,16 +4,35 @@
 
 The app is designed around using the Thor bottom screen as a small replay dashboard while a game or emulator runs on the other screen.
 
+## Screenshots
+
+### Clip library
+
+Saved replays include thumbnails, duration, resolution, file size, favorites, sorting, and quick playback controls.
+
+<p align="center">
+  <img src="docs/images/clips-library.png" alt="30 Seconds Ago clip library showing saved gameplay replays" width="680">
+</p>
+
+### Built for the AYN Thor dual-screen layout
+
+Keep playing on the top screen while the replay dashboard or clip library remains available on the bottom screen.
+
+| Replay buffer active | Browse clips while playing |
+| --- | --- |
+| <img src="docs/images/replay-buffer-active.png" alt="Minecraft running on the AYN Thor top screen while the 30 Seconds Ago replay buffer is ready on the bottom screen"> | <img src="docs/images/clips-while-gaming.png" alt="A game running on the AYN Thor top screen while saved clips are shown on the bottom screen"> |
+
 ## Features
 
 - First-time setup flow for quality, save folder, popup permission, alert screen, and controller hotkey guidance
-- Replay dashboard with large Capture Replay, Start, and Stop buttons
+- Color-coded replay dashboard with buffer state, capture details, storage information, and a large Save Replay button
 - Configurable replay length
 - Video quality presets, including 720p30, 720p60, 1080p30, and 1080p60
 - Adjustable bitrate
 - Optional internal audio capture when Android and the running app allow it
-- Saved clips library with thumbnails
+- Saved clips library with thumbnails, metadata, favorites, sorting, rename, and delete
 - In-app MP4 playback
+- Lossless beginning/end trimming with Save Copy and Replace Original options
 - Open or share clips from inside the app
 - Default `Movies/ThorReplay` save location or custom folder selection
 - Custom filename templates
@@ -47,7 +66,7 @@ Movies/ThorReplay
 
 You can choose a different save folder from setup or Settings.
 
-The Clips tab shows saved MP4 files with thumbnails. Tap `Play` to expand a clip and watch it inside the app. Tap `Share` to send the clip to another Android app.
+The Clips tab shows saved MP4 files with thumbnails and metadata. Tap `Play` to expand a clip and watch it inside the app. Use the three-dot menu to trim, rename, delete, open externally, or share a clip.
 
 ## Filename Templates
 
