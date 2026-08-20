@@ -4,6 +4,9 @@
 
 The app is designed around using the Thor bottom screen as a small replay dashboard while a game or emulator runs on the other screen.
 
+> [!IMPORTANT]
+> 30 Seconds Ago is made specifically for the **AYN Thor** and has not been tested on other devices. See [Help, Compatibility, and Known Issues](HELP.md) before installing or choosing capture settings.
+
 ## Screenshots
 
 ### Clip library
@@ -41,7 +44,9 @@ Keep playing on the top screen while the replay dashboard or clip library remain
 
 ## Recommended First Setup
 
-For Dolphin, start with `720p30 Standard`. Try `720p60 Smooth` if the game still runs well.
+For Dolphin, start with `720p60 Smooth`. Games with busy scenes or several active players may need `720p30 Standard` or a lower bitrate. Native Android games such as Fortnite and Minecraft have worked well at `1080p60 High` in testing so far.
+
+See the [help and compatibility guide](HELP.md) for details about tested games, performance issues, and ways to avoid capture instability.
 
 During setup, use `Allow Permission` and then `Test Alert` in the Saved Clip Alert section. Android may require popup permission before the saved-clip alert can appear on the selected screen.
 
@@ -104,11 +109,14 @@ Please test:
 
 ## Known Limitations
 
+- The app is built for the AYN Thor and has not been tested on other Android devices.
 - Android screen capture permission is required when starting the replay buffer.
 - Some games, emulators, or protected content may block internal audio capture.
 - Some hardware or system buttons may not be visible to Android apps.
 - The replay may be slightly over the selected length because the app saves from the nearest safe video keyframe.
-- High-resolution or high-frame-rate capture can affect emulator performance. If a game becomes unstable, use 720p30 or lower bitrate settings.
+- Dolphin and the screen recorder compete for GPU resources. Busy games can cause capture hiccups or crashes, even at the recommended `720p60` setting. If a game becomes unstable, use `720p30` or a lower bitrate.
+
+For game-specific guidance and troubleshooting, read [Help, Compatibility, and Known Issues](HELP.md).
 
 ## Build A Debug APK
 
